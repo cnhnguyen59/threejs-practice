@@ -122,7 +122,6 @@ const EPS = 0.02; // try 0.01–0.05 depending on tileSize
 
   return (
     <group position={[offsetX * tileSize, 0, offsetY * tileSize]}>
-  {/* Flat map slightly above the grid */}
   <mesh rotation-x={-Math.PI / 2} position={[0, 0.02, 0]}>
     <planeGeometry args={[tileSize, tileSize, 1, 1]} />
     <meshBasicMaterial
@@ -133,7 +132,6 @@ const EPS = 0.02; // try 0.01–0.05 depending on tileSize
     />
   </mesh>
 
-  {/* Terrain on top (same tile position) */}
   <mesh rotation-x={-Math.PI / 2} position={[0, 0, 0]}>
     <planeGeometry args={[tileSize + EPS, tileSize + EPS, segments, segments]} />
     <terrainMaterial uSat={satTex} uDem={demTex} uHeightScale={heightScale} />
