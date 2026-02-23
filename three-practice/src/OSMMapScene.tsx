@@ -1,7 +1,8 @@
 import * as THREE from "three";
-import React, { Suspense, useMemo } from "react";
+import React, { Suspense, useMemo, useState } from "react";
 import { Canvas, extend } from "@react-three/fiber";
 import { OrbitControls, shaderMaterial, useTexture, Sky } from "@react-three/drei";
+
 
 /**
  * Mapbox Terrain-RGB decoding:
@@ -31,7 +32,7 @@ void main() {
 
   vec4 dem = texture2D(uDem, uv);
   float hMeters = decodeHeight(dem.rgb);
-hMeters = hMeters + 15000.0;
+hMeters = hMeters + 9000.0;
 
   
   
@@ -205,7 +206,7 @@ const seg = dist === 0 ? 256 : dist === 1 ? 128 : 64;
   );
 }
 
-export default function TerrainGridScene() {
+export default function TerrainGridScene({lat, lon, zoom}: {lat: number, lon: number,zoom:number}) {
     const latRad = (35.363602 * Math.PI) / 180;
 const zScale = 1 / Math.cos(latRad);
 
@@ -227,9 +228,9 @@ const zScale = 1 / Math.cos(latRad);
         {/* Pick your center */}
         <group scale={[1,1,zScale]}>
         <TerrainGrid5x5
-          lat={27.986065}
-          lon={86.922623}
-          zoom={13}
+          lat={lat}
+          lon={lon}
+          zoom={zoom}
           tileSize={10}
           segments={96}
           heightScale={0.0018}
