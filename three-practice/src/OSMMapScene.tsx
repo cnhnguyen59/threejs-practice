@@ -101,10 +101,8 @@ function Tile({
   const demUrl = `https://api.mapbox.com/v4/mapbox.terrain-rgb/${zoom}/${x}/${y}.pngraw?access_token=${mapboxToken}`;
 const streetUrl =
   `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/${zoom}/${x}/${y}@2x?access_token=${mapboxToken}`;
-  // Load both textures for this tile
   const [satTex, demTex, streetTex] = useTexture([satUrl, demUrl, streetUrl]);
 
-// Satellite imagery (display)
 satTex.colorSpace = THREE.SRGBColorSpace;
 streetTex.colorSpace = THREE.SRGBColorSpace;
 satTex.anisotropy = 8;

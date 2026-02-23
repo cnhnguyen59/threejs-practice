@@ -1,8 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { MapContainer, TileLayer, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-
-// Replace this with your actual 3D component
 import TerrainGridScene from "./OSMMapScene";
 
 type LatLng = { lat: number; lng: number };
@@ -30,8 +28,6 @@ function LeafletSync({
 
 export default function MapViewToggle() {
   const [mode, setMode] = useState<"map" | "terrain">("map");
-
-  // Shared state between Leaflet + Three
   const [center, setCenter] = useState<LatLng>({
     lat: 27.986065,
     lng: 86.922623,
@@ -40,12 +36,10 @@ export default function MapViewToggle() {
 
   const label = mode === "map" ? "Switch to 3D" : "Switch to Map";
 
-  // You can swap to a different basemap provider later
   const osmUrl = useMemo(() => "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", []);
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-      {/* Toggle button */}
       <button
         onClick={() => setMode((m) => (m === "map" ? "terrain" : "map"))}
         style={{
