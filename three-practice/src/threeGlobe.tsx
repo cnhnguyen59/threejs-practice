@@ -44,15 +44,8 @@ export interface Operation {
   users?: string[];
   user_loading?: boolean;
 }
-const classificationColors: Record<string, string> = {
-  unclassified: "#007A33",
-  confidential: "#0033A0",
-  secret: "#D80000",
-  topsecret: "#FF671F",
-  "topsecret-sci": "#FFFF00",
-};
 
-const regions = ["China", "Scarborough Reef"];
+const regions = ["Costa Rica", "China", "Scarborough Reef"];
 
 const SATELLITE_MODEL_URL = "src/assets/models/landsat.glb";
 
@@ -249,19 +242,14 @@ export default function AGlobe() {
 
           let geometry = firstMatch.geojson;
 
-          const isScarborough =
-            firstMatch?.name === "Scarborough Shoal" ||
-            firstMatch?.display_name?.includes("Scarborough Shoal");
-
           if (
-            isScarborough &&
             geometry.type === "Polygon" &&
             Array.isArray(geometry.coordinates) &&
             geometry.coordinates.length > 0
           ) {
             geometry = {
               ...geometry,
-              coordinates: [geometry.coordinates[0]],
+              coordinates: [geometry.coordinates[0].reverse()],
             };
           }
 
@@ -283,6 +271,7 @@ export default function AGlobe() {
       }
 
       if (!cancelled) {
+        console.log(allPolygons);
         setPolygonData(allPolygons);
       }
     };
@@ -294,36 +283,31 @@ export default function AGlobe() {
     };
   }, []);
 
-  const countryPolygons = useMemo(() => {
-    return polygonData.filter((f) => f.properties.category === "country");
-  }, [polygonData]);
+  //   return polygonData
+  //     .filter((f) => f.properties.name === "Scarborough Shoal")
+  //     .flatMap((feature) => {
+  //       const geom = feature.geometry;
 
-  const shoalPaths = useMemo(() => {
-    return polygonData
-      .filter((f) => f.properties.name === "Scarborough Shoal")
-      .flatMap((feature) => {
-        const geom = feature.geometry;
+  //       if (geom.type === "Polygon") {
+  //         const outerRing = geom.coordinates[0] ?? [];
+  //         const points = outerRing
+  //           .filter(
+  //             (coord: any) =>
+  //               Array.isArray(coord) &&
+  //               coord.length >= 2 &&
+  //               Number.isFinite(coord[0]) &&
+  //               Number.isFinite(coord[1]),
+  //           )
+  //           .map(([lng, lat]: [number, number]) => ({ lat, lng }));
 
-        if (geom.type === "Polygon") {
-          const outerRing = geom.coordinates[0] ?? [];
-          const points = outerRing
-            .filter(
-              (coord: any) =>
-                Array.isArray(coord) &&
-                coord.length >= 2 &&
-                Number.isFinite(coord[0]) &&
-                Number.isFinite(coord[1]),
-            )
-            .map(([lng, lat]: [number, number]) => ({ lat, lng }));
+  //         return points.length > 1
+  //           ? [{ name: feature.properties.name, points }]
+  //           : [];
+  //       }
 
-          return points.length > 1
-            ? [{ name: feature.properties.name, points }]
-            : [];
-        }
-
-        return [];
-      });
-  }, [polygonData]);
+  //       return [];
+  //     });
+  // }, [polygonData]);
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-black items-center justify-center">
@@ -340,21 +324,13 @@ export default function AGlobe() {
           objectLng="lng"
           objectAltitude="altitude"
           objectThreeObject={objectThreeObject}
-          polygonsData={countryPolygons}
+          polygonsData={polygonData}
           polygonGeoJsonGeometry="geometry"
           polygonAltitude={0.003}
           polygonCapColor={() => "rgba(196,214,0,0.28)"}
           polygonSideColor={() => "rgba(196,214,0,0.12)"}
           polygonStrokeColor={() => "#C4D600"}
           polygonsTransitionDuration={300}
-          pathsData={shoalPaths}
-          pathPoints="points"
-          pathPointLat="lat"
-          pathPointLng="lng"
-          pathPointAlt={0.004}
-          pathColor={() => "#C4D600"}
-          pathStroke={0.5}
-          pathResolution={2}
         />
       </div>
     </div>
