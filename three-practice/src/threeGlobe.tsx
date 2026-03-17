@@ -9,6 +9,7 @@ import { Stars } from "@react-three/drei";
 import rewind from "@turf/rewind";
 import simplify from "@turf/simplify";
 import countriesGeoJson from "./assets/ne_110m_admin_0_countries.json";
+import centroid from "@turf/centroid";
 
 function StarfieldBackground() {
   return (
@@ -33,6 +34,15 @@ function StarfieldBackground() {
   );
 }
 
+const CornerBrackets = () => (
+  <>
+    <div className="absolute -left-1 -top-1 z-10 h-4 w-4 border-l-2 border-t-2 border-[#C4D600]" />
+    <div className="absolute -right-1 -top-1 z-10 h-4 w-4 border-r-2 border-t-2 border-[#C4D600]" />
+    <div className="absolute -bottom-1 -left-1 z-10 h-4 w-4 border-b-2 border-l-2 border-[#C4D600]" />
+    <div className="absolute -bottom-1 -right-1 z-10 h-4 w-4 border-b-2 border-r-2 border-[#C4D600]" />
+  </>
+);
+
 export interface Operation {
   _id: string;
   created: string;
@@ -48,6 +58,16 @@ export interface Operation {
 const regions = ["Costa Rica", "China", "Scarborough Reef"];
 
 const SATELLITE_MODEL_URL = "src/assets/models/landsat.glb";
+
+const DC = { lat: 38.9072, lng: -77.0369 };
+
+type ArcDatum = {
+  startLat: number;
+  startLng: number;
+  endLat: number;
+  endLng: number;
+  label: string;
+};
 
 type SatelliteDatum = {
   id: string;
@@ -72,9 +92,49 @@ type RegionFeature = {
   };
 };
 
+function getFeatureCenter(feature: RegionFeature) {
+  const c = centroid(feature as any);
+  const [lng, lat] = c.geometry.coordinates;
+  return { lat, lng };
+}
+
+function projectLatLngToScreen(
+  globe: any,
+  container: HTMLDivElement,
+  lat: number,
+  lng: number,
+  altitude = 0.01,
+) {
+  const camera = globe.camera();
+  const pos = globe.getCoords(lat, lng, altitude);
+
+  const vector = new THREE.Vector3(pos.x, pos.y, pos.z);
+  vector.project(camera);
+
+  const rect = container.getBoundingClientRect();
+
+  const x = ((vector.x + 1) / 2) * rect.width;
+  const y = ((-vector.y + 1) / 2) * rect.height;
+
+  const visible = vector.z < 1;
+
+  return { x, y, visible };
+}
+
 export default function AGlobe() {
   const globeRef = useRef<any>(null);
   const [polygonData, setPolygonData] = useState<RegionFeature[]>([]);
+  const [hoveredPolygon, setHoveredPolygon] = useState<RegionFeature | null>(
+    null,
+  );
+  const [calloutAnchor, setCalloutAnchor] = useState<{
+    x: number;
+    y: number;
+    visible: boolean;
+  } | null>(null);
+
+  const [arcData, setArcData] = useState<ArcDatum[]>([]);
+
   const [globeSize, setGlobeSize] = useState(100);
 
   const satelliteModelRef = useRef<THREE.Object3D | null>(null);
@@ -82,6 +142,8 @@ export default function AGlobe() {
     { id: "sat-1", lat: 0, lng: 0, altitude: 0.2 },
   ]);
   const [modelReady, setModelReady] = useState(false);
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const loader = new GLTFLoader();
@@ -112,6 +174,36 @@ export default function AGlobe() {
     window.addEventListener("resize", updateSize);
     return () => window.removeEventListener("resize", updateSize);
   }, []);
+
+  useEffect(() => {
+    if (!hoveredPolygon || !globeRef.current || !containerRef.current) {
+      setCalloutAnchor(null);
+      return;
+    }
+
+    let frameId = 0;
+
+    const updateAnchor = () => {
+      if (!globeRef.current || !containerRef.current || !hoveredPolygon) return;
+
+      const { lat, lng } = getFeatureCenter(hoveredPolygon);
+
+      const projected = projectLatLngToScreen(
+        globeRef.current,
+        containerRef.current,
+        lat,
+        lng,
+        0.01,
+      );
+
+      setCalloutAnchor(projected);
+      frameId = requestAnimationFrame(updateAnchor);
+    };
+
+    updateAnchor();
+
+    return () => cancelAnimationFrame(frameId);
+  }, [hoveredPolygon, globeSize]);
 
   async function searchPlaceGeoJSON(q: string) {
     const url =
@@ -249,7 +341,7 @@ export default function AGlobe() {
           ) {
             geometry = {
               ...geometry,
-              coordinates: [geometry.coordinates[0].reverse()],
+              coordinates: [[...geometry.coordinates[0]].reverse()],
             };
           }
 
@@ -273,6 +365,19 @@ export default function AGlobe() {
       if (!cancelled) {
         console.log(allPolygons);
         setPolygonData(allPolygons);
+        const arcs = allPolygons.map((feature) => {
+          const center = getFeatureCenter(feature);
+
+          return {
+            startLat: DC.lat,
+            startLng: DC.lng,
+            endLat: center.lat,
+            endLng: center.lng,
+            label: feature.properties?.name ?? "Unknown region",
+          };
+        });
+
+        setArcData(arcs);
       }
     };
 
@@ -310,7 +415,10 @@ export default function AGlobe() {
   // }, [polygonData]);
 
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-black items-center justify-center">
+    <div
+      ref={containerRef}
+      className="relative h-screen w-full overflow-hidden bg-black items-center justify-center"
+    >
       <StarfieldBackground />
       <div className="relative z-10 flex h-full w-full items-center justify-center">
         <Globe
@@ -327,11 +435,289 @@ export default function AGlobe() {
           polygonsData={polygonData}
           polygonGeoJsonGeometry="geometry"
           polygonAltitude={0.003}
-          polygonCapColor={() => "rgba(196,214,0,0.28)"}
-          polygonSideColor={() => "rgba(196,214,0,0.12)"}
           polygonStrokeColor={() => "#C4D600"}
           polygonsTransitionDuration={300}
+          onPolygonHover={(polygon: RegionFeature | null) =>
+            setHoveredPolygon(polygon)
+          }
+          polygonCapColor={(d: RegionFeature) =>
+            d === hoveredPolygon
+              ? "rgba(196,214,0,0.55)"
+              : "rgba(196,214,0,0.28)"
+          }
+          polygonSideColor={(d: RegionFeature) =>
+            d === hoveredPolygon
+              ? "rgba(196,214,0,0.22)"
+              : "rgba(196,214,0,0.12)"
+          }
+          arcsData={arcData}
+          arcStartLat="startLat"
+          arcStartLng="startLng"
+          arcEndLat="endLat"
+          arcEndLng="endLng"
+          arcColor={() => ["rgba(196,214,0,0.95)", "rgba(0,229,255,0.9)"]}
+          arcStroke={0.25}
+          arcAltitude={0.3}
+          arcDashLength={0.3}
+          arcDashGap={0.01}
+          arcDashAnimateTime={3000}
         />
+      </div>
+
+      {hoveredPolygon && calloutAnchor?.visible && (
+        <PolygonCallout
+          x={calloutAnchor.x}
+          y={calloutAnchor.y}
+          label={hoveredPolygon.properties?.name ?? "Unknown region"}
+        />
+      )}
+
+      {/* {hoveredPolygon && (
+        <div
+          style={{
+            position: "absolute",
+            left: mousePos.x + 20,
+            top: mousePos.y + 20,
+            zIndex: 9999,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              background: "black",
+              color: "white",
+              padding: "12px 16px",
+              border: "solid 1px #C4D600",
+              minWidth: 140,
+            }}
+          >
+            <CornerBrackets />
+            {hoveredPolygon.properties?.name ?? "Unknown region"}
+          </div>
+        </div>
+      )} */}
+    </div>
+  );
+}
+
+type PolygonCalloutProps = {
+  x: number;
+  y: number;
+  label: string;
+};
+
+function PolygonCallout({ x, y, label }: PolygonCalloutProps) {
+  const boxWidth = 180;
+  const boxHeight = 56;
+
+  const boxOffsetX = 70;
+  const boxOffsetY = -28;
+
+  const lineStartX = 0;
+  const lineStartY = 0;
+
+  const lineEndX = boxOffsetX;
+  const lineEndY = boxOffsetY + boxHeight / 2;
+
+  const svgLeft = Math.min(lineStartX, lineEndX);
+  const svgTop = Math.min(lineStartY, lineEndY);
+  const svgWidth = Math.abs(lineEndX - lineStartX) + 4;
+  const svgHeight = Math.abs(lineEndY - lineStartY) + 4;
+
+  const pathStartX = lineStartX - svgLeft + 2;
+  const pathStartY = lineStartY - svgTop + 2;
+  const pathEndX = lineEndX - svgLeft + 2;
+  const pathEndY = lineEndY - svgTop + 2;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: x,
+        top: y,
+        zIndex: 9999,
+        pointerEvents: "none",
+      }}
+    >
+      <svg
+        width={svgWidth}
+        height={svgHeight}
+        style={{
+          position: "absolute",
+          left: svgLeft - 2,
+          top: svgTop - 2,
+          overflow: "visible",
+        }}
+      >
+        <line
+          x1={pathStartX}
+          y1={pathStartY}
+          x2={pathEndX}
+          y2={pathEndY}
+          stroke="#C4D600"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </svg>
+
+      <div
+        style={{
+          position: "absolute",
+          left: boxOffsetX,
+          top: boxOffsetY,
+          width: boxWidth,
+          minHeight: boxHeight,
+          overflow: "visible",
+          background:
+            "linear-gradient(180deg, rgba(0,0,0,0.96) 0%, rgba(10,16,0,0.94) 100%)",
+          color: "white",
+          padding: "10px 14px 12px 14px",
+          border: "1px solid rgba(196,214,0,0.65)",
+          boxShadow: `
+      0 0 0 1px rgba(196,214,0,0.12) inset,
+      0 0 10px rgba(196,214,0,0.12),
+      0 0 24px rgba(196,214,0,0.08)
+    `,
+          clipPath:
+            "polygon(0 8px, 8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px))",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: 4,
+            border: "1px solid rgba(196,214,0,0.18)",
+            pointerEvents: "none",
+            clipPath:
+              "polygon(0 6px, 6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px))",
+          }}
+        />
+
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: 28,
+            height: 28,
+            borderTop: "2px solid #C4D600",
+            borderLeft: "2px solid #C4D600",
+            opacity: 0.95,
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            width: 28,
+            height: 28,
+            borderTop: "2px solid #C4D600",
+            borderRight: "2px solid #C4D600",
+            opacity: 0.95,
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            width: 28,
+            height: 28,
+            borderBottom: "2px solid #C4D600",
+            borderLeft: "2px solid #C4D600",
+            opacity: 0.95,
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            bottom: 0,
+            right: 0,
+            width: 28,
+            height: 28,
+            borderBottom: "2px solid #C4D600",
+            borderRight: "2px solid #C4D600",
+            opacity: 0.95,
+            pointerEvents: "none",
+          }}
+        />
+
+        <div
+          style={{
+            position: "relative",
+            zIndex: 2,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            fontFamily: "system-ui, sans-serif",
+          }}
+        >
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              color: "#C4D600",
+              fontSize: 10,
+              opacity: 0.9,
+            }}
+          >
+            <span
+              style={{
+                display: "inline-block",
+                width: 8,
+                height: 8,
+                background: "#C4D600",
+                boxShadow: "0 0 8px rgba(196,214,0,0.55)",
+              }}
+            />
+            Operation
+          </div>
+
+          <h5
+            style={{
+              margin: 0,
+              fontSize: 16,
+              lineHeight: 1.1,
+              fontWeight: 700,
+              color: "#ffffff",
+              textShadow: "0 0 8px rgba(196,214,0,0.15)",
+            }}
+          >
+            {label}
+          </h5>
+
+          <p
+            style={{
+              margin: 0,
+              fontSize: 11,
+              lineHeight: 1.3,
+              color: "rgba(255,255,255,0.72)",
+              letterSpacing: "0.12em",
+            }}
+          >
+            Classification:
+          </p>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 11,
+              lineHeight: 1.3,
+              color: "blue",
+              letterSpacing: "0.12em",
+            }}
+          >
+            Confidential
+          </p>
+        </div>
       </div>
     </div>
   );
